@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GISTDA Hydro-Watch: ระบบวิเคราะห์และรายงานระดับน้ำอัจฉริยะ</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet Map CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Sarabun', sans-serif;
+        }
+        .tech-font {
+            font-family: 'Chakra Petch', sans-serif;
+        }
+        /* Custom scrollbar for cyber look */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        /* Pulse Animation for Danger Stations */
+        @keyframes pulse-red {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.6; }
+        }
+        .pulse-danger {
+            animation: pulse-red 2s infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+    <!-- Top Navigation Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-[1000] px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+            <!-- Brand -->
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white p-2 rounded-lg shadow-lg shadow-blue-500/20">
+                    <i data-lucide="waves" class="w-6 h-6 animate-bounce"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs bg-blue-500/20 text-blue-400 font-bold px-2 py-0.5 rounded border border-blue-500/30 tracking-wider uppercase tech-font">GISTDA Sphere Integrated</span>
+                        <span id="apiStatusBadge" class="text-xs bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded border border-emerald-500/30 flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> จำลองข้อมูลเสมือน
+                        </span>
+                    </div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        ระบบวิเคราะห์ระดับน้ำและเฝ้าระวังภัยพิบัติอัจฉริยะ 
+                    </h1>
+                </div>
+            </div>
+
+            <!-- Stats Overview Header -->
+            <div class="flex flex-wrap items-center gap-4 text-xs md:text-sm">
+                <div class="bg-slate-950/60 border border-slate-800 rounded px-3 py-1.5">
+                    <span class="text-slate-400 block text-[10px] uppercase">สถานีทั้งหมด</span>
+                    <span class="font-bold text-white tech-font text-base" id="totalStationsCount">15</span> สถานี
+                </div>
+                <div class="bg-slate-950/60 border border-slate-800 rounded px-3 py-1.5">
+                    <span class="text-rose-400 block text-[10px] uppercase flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span> วิกฤตน้ำล้นตลิ่ง
+                    </span>
+                    <span class="font-bold text-rose-500 tech-font text-base" id="dangerStationsCount">2</span> สถานี
+                </div>
+                <button onclick="toggleApiSettingsModal()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-700 transition duration-150 text-xs font-semibold">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                    เชื่อมต่อ API Key
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+        
+        <!-- SIDEBAR - Alerts & Control Panel (3 Cols) -->
+        <div class="lg:col-span-3 flex flex-col gap-4">
+            
+            <!-- Filter Panel -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+                <h3 class="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                    <i data-lucide="sliders-horizontal" class="w-4 h-4 text-blue-400"></i> ตัวกรองการค้นหา
+                </h3>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">ค้นหาชื่อสถานี / แม่น้ำ</label>
+                        <div class="relative">
+                            <input id="searchQuery" oninput="applyFilters()" type="text" placeholder="พิมพ์ชื่อสถานที่..." class="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 pl-8 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-100">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute left-2.5 top-2.5"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">ลุ่มน้ำหลัก (River Basin)</label>
+                        <select id="basinFilter" onchange="applyFilters()" class="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-100">
+                            <option value="ALL">ทั้งหมดทุกลุ่มน้ำ</option>
+                            <option value="ChaoPhraya">ลุ่มน้ำเจ้าพระยา</option>
+                            <option value="ChiMun">ลุ่มน้ำชี-มูล</option>
+                            <option value="PingWangYomNan">ลุ่มน้ำปิง-วัง-ยม-น่าน</option>
+                            <option value="Mekong">ลุ่มน้ำโขง</option>
+                            <option value="Southern">ลุ่มน้ำภาคใต้</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">สถานะระดับน้ำ</label>
+                        <select id="statusFilter" onchange="applyFilters()" class="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-100">
+                            <option value="ALL">ทุกสถานะ</option>
+                            <option value="danger">🔴 วิกฤต (Danger)</option>
+                            <option value="warning">🟠 เตือนภัย (Warning)</option>
+                            <option value="monitor">🟡 เฝ้าระวัง (Monitor)</option>
+                            <option value="normal">🟢 ปกติ (Normal)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time Warning List -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex-1 flex flex-col min-h-[300px]">
+                <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+                    <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                        <i data-lucide="bell-ring" class="w-4 h-4 text-rose-500 animate-pulse"></i> รายการเตือนภัยเร่งด่วน
+                    </h3>
+                    <span class="text-[10px] bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded font-bold">LIVE</span>
+                </div>
+                
+                <!-- Alerts Container -->
+                <div id="alertsList" class="space-y-2 overflow-y-auto max-h-[350px] flex-1">
+                    <!-- Dynamic Alert Cards go here -->
+                </div>
+                
+                <div class="mt-4 pt-3 border-t border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
+                    <span>วิเคราะห์พยากรณ์ล่วงหน้า 24 ชม.</span>
+                    <a href="#gis-guide" onclick="openDeveloperGuide()" class="text-blue-400 hover:underline">ข้อมูลดาวเทียม GISTDA</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN SECTION - Map & Graphs (9 Cols) -->
+        <div class="lg:col-span-9 flex flex-col gap-4">
+            
+            <!-- Tabs Menu -->
+            <div class="flex items-center justify-between border-b border-slate-850 bg-slate-900/50 p-1.5 rounded-xl border border-slate-800">
+                <div class="flex items-center gap-1">
+                    <button onclick="switchTab('map-tab')" id="map-tab-btn" class="px-4 py-2 text-xs md:text-sm font-semibold rounded-lg flex items-center gap-2 transition-all duration-150 bg-blue-600 text-white shadow">
+                        <i data-lucide="map" class="w-4 h-4"></i> แผนที่ระบบภูมิสารสนเทศ (GIS Map)
+                    </button>
+                    <button onclick="switchTab('analytics-tab')" id="analytics-tab-btn" class="px-4 py-2 text-xs md:text-sm font-semibold rounded-lg flex items-center gap-2 transition-all duration-150 text-slate-400 hover:text-white hover:bg-slate-800">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4"></i> สถิติเชิงปริมาณ & กราฟเปรียบเทียบ
+                    </button>
+                    <button onclick="switchTab('developer-tab')" id="developer-tab-btn" class="px-4 py-2 text-xs md:text-sm font-semibold rounded-lg flex items-center gap-2 transition-all duration-150 text-slate-400 hover:text-white hover:bg-slate-800">
+                        <i data-lucide="terminal" class="w-4 h-4"></i> คู่มือเชื่อมโยง GISTDA API
+                    </button>
+                </div>
+                <div class="hidden sm:flex items-center gap-2 text-xs text-slate-400 pr-3">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                    อัปเดตล่าสุด: <span id="lastUpdateTime" class="font-mono">กำลังดึงข้อมูล...</span>
+                </div>
+            </div>
+
+            <!-- Tab Content 1: Map View -->
+            <div id="map-tab" class="tab-content grid grid-cols-1 xl:grid-cols-3 gap-4">
+                
+                <!-- Leaflet Interactive Map -->
+                <div class="xl:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col min-h-[480px] relative">
+                    <!-- Map Legend inside map overlay -->
+                    <div class="absolute bottom-4 left-4 bg-slate-950/90 border border-slate-800 p-3 rounded-lg z-[999] text-[11px] shadow-lg backdrop-blur space-y-1.5 pointer-events-auto">
+                        <div class="font-bold text-slate-300 border-b border-slate-800 pb-1 mb-1.5 flex items-center gap-1">
+                            <i data-lucide="info" class="w-3.5 h-3.5 text-blue-400"></i> คำอธิบายสีสัญลักษณ์
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-emerald-500 border border-white/20"></span>
+                            <span class="text-slate-300">ปกติ (Normal): ต่ำกว่า 70% ของตลิ่ง</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-yellow-500 border border-white/20"></span>
+                            <span class="text-slate-300">เฝ้าระวัง (Monitor): 70% - 85%</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-amber-500 border border-white/20"></span>
+                            <span class="text-slate-300">เตือนภัย (Warning): 85% - 95%</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-rose-500 border border-white/20 animate-pulse"></span>
+                            <span class="text-slate-300">วิกฤต (Danger): ล้นตลิ่ง (>95%)</span>
+                        </div>
+                    </div>
+
+                    <!-- GIS Layers Controller Toggle (Concept for GISTDA satellite layers) -->
+                    <div class="absolute top-4 right-4 bg-slate-950/90 border border-slate-800 p-2.5 rounded-lg z-[999] text-xs shadow-lg backdrop-blur space-y-1">
+                        <label class="flex items-center gap-2 cursor-pointer text-slate-300 font-semibold mb-1">
+                            <i data-lucide="layers" class="w-3.5 h-3.5 text-indigo-400"></i> ชั้นข้อมูลดาวเทียม (GISTDA Overlay)
+                        </label>
+                        <hr class="border-slate-800 my-1">
+                        <label class="flex items-center gap-2 cursor-pointer text-slate-300">
+                            <input type="checkbox" id="floodPlainOverlay" checked class="accent-indigo-500 rounded">
+                            <span>พื้นที่เสี่ยงอุทกภัย (ซ้ำซาก)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer text-slate-300">
+                            <input type="checkbox" id="satellitePrecipitation" class="accent-indigo-500 rounded">
+                            <span>วิเคราะห์ปริมาณฝนสะสมสถิติ</span>
+                        </label>
+                    </div>
+
+                    <!-- Map container -->
+                    <div id="map" class="w-full flex-1 min-h-[420px] bg-slate-950"></div>
+                </div>
+
+                <!-- Station Detailed Info Pane -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+                    <div id="stationDetailEmpty" class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                        <i data-lucide="map-pin" class="w-12 h-12 mb-3 text-slate-700 animate-pulse"></i>
+                        <h4 class="font-bold text-slate-400">กรุณาเลือกสถานีวัดระดับน้ำ</h4>
+                        <p class="text-xs max-w-xs mt-1">คลิกที่จุดสัญลักษณ์บนแผนที่ หรือเลือกจากการค้นหาเพื่อดูรายงานสถิติต่างๆ แบบละเอียดเจาะลึก</p>
+                    </div>
+
+                    <div id="stationDetailContent" class="hidden flex-col gap-3 h-full">
+                        <!-- Station Header -->
+                        <div class="border-b border-slate-800 pb-3">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span id="detBasin" class="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-2.5 py-0.5 rounded border border-blue-500/20">ลุ่มน้ำเจ้าพระยา</span>
+                                <span id="detStatus" class="text-xs font-bold px-2.5 py-0.5 rounded">ปกติ</span>
+                            </div>
+                            <h3 id="detName" class="text-base font-bold text-white">สถานี C.2 (แม่น้ำเจ้าพระยา อ.เมือง นครสวรรค์)</h3>
+                            <p class="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                                <i data-lucide="map-pin" class="w-3 h-3 text-slate-500"></i> พิกัด: <span id="detCoords" class="font-mono">15.701, 100.134</span>
+                            </p>
+                        </div>
+
+                        <!-- Main Telemetry Grid -->
+                        <div class="grid grid-cols-2 gap-2 my-2">
+                            <div class="bg-slate-950/80 border border-slate-800 p-2.5 rounded-lg">
+                                <span class="text-[10px] text-slate-400 block">ความสูงตลิ่ง</span>
+                                <span id="detBankHeight" class="text-lg font-bold tech-font text-sky-400">26.20</span> <span class="text-xs text-slate-400">ม.รทก.</span>
+                            </div>
+                            <div class="bg-slate-950/80 border border-slate-800 p-2.5 rounded-lg">
+                                <span class="text-[10px] text-slate-400 block">ระดับน้ำปัจจุบัน</span>
+                                <span id="detWaterLevel" class="text-lg font-bold tech-font text-emerald-400">18.45</span> <span class="text-xs text-slate-400">ม.รทก.</span>
+                            </div>
+                            <div class="bg-slate-950/80 border border-slate-800 p-2.5 rounded-lg">
+                                <span class="text-[10px] text-slate-400 block">ปริมาณน้ำ (%)</span>
+                                <span id="detPercent" class="text-lg font-bold tech-font text-emerald-400">70.4%</span>
+                            </div>
+                            <div class="bg-slate-950/80 border border-slate-800 p-2.5 rounded-lg">
+                                <span class="text-[10px] text-slate-400 block">อัตราการไหลระบาย</span>
+                                <span id="detDischarge" class="text-lg font-bold tech-font text-indigo-400">1,250</span> <span class="text-xs text-slate-400">ลบ.ม./วิ</span>
+                            </div>
+                        </div>
+
+                        <!-- Mini Trend Chart -->
+                        <div class="bg-slate-950/60 p-2.5 border border-slate-800 rounded-lg flex-1 min-h-[140px] flex flex-col justify-between">
+                            <span class="text-[10px] text-slate-400 block mb-1">แนวโน้มความสูงระดับน้ำย้อนหลัง 24 ชม.</span>
+                            <div class="h-[120px] relative">
+                                <canvas id="miniTrendChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Critical Alert Info & Export button -->
+                        <div class="pt-3 border-t border-slate-800 mt-2 flex items-center justify-between gap-2">
+                            <button onclick="exportStationData()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> ส่งออกข้อมูล CSV
+                            </button>
+                            <button onclick="simulateTelemetryTrigger()" class="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-400 border border-indigo-500/40 px-2.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1 transition" title="จำลองคลื่นกระแสน้ำหนุน">
+                                <i data-lucide="zap" class="w-3.5 h-3.5"></i> ทดสอบน้ำหนุน
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content 2: Comprehensive Analytics -->
+            <div id="analytics-tab" class="tab-content hidden space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
+                        <div>
+                            <span class="text-xs text-slate-400 uppercase">ค่าเฉลี่ยระดับน้ำรวม</span>
+                            <h4 class="text-2xl font-bold text-white tech-font mt-1">74.2%</h4>
+                            <p class="text-[10px] text-emerald-400 mt-1 flex items-center gap-0.5"><i data-lucide="arrow-down-right" class="w-3 h-3"></i>ลดลง 0.8% จากเมื่อวาน</p>
+                        </div>
+                        <div class="bg-blue-500/10 text-blue-400 p-3 rounded-full border border-blue-500/20">
+                            <i data-lucide="percent" class="w-6 h-6"></i>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
+                        <div>
+                            <span class="text-xs text-slate-400 uppercase">ปริมาตรการระบายน้ำสะสม</span>
+                            <h4 class="text-2xl font-bold text-white tech-font mt-1">8,450 <span class="text-xs text-slate-400 font-normal">ลบ.ม./วิ</span></h4>
+                            <p class="text-[10px] text-slate-400 mt-1">ทุกสถานีตรวจวัดหลักรวมกัน</p>
+                        </div>
+                        <div class="bg-cyan-500/10 text-cyan-400 p-3 rounded-full border border-cyan-500/20">
+                            <i data-lucide="droplet" class="w-6 h-6"></i>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
+                        <div>
+                            <span class="text-xs text-slate-400 uppercase">ดัชนีความเสี่ยงอุทกภัยโดยดาวเทียม</span>
+                            <h4 class="text-2xl font-bold text-amber-500 tech-font mt-1">ปานกลาง (Medium)</h4>
+                            <p class="text-[10px] text-amber-400 mt-1 flex items-center gap-0.5"><i data-lucide="alert-triangle" class="w-3 h-3"></i> เฝ้าระวังมรสุมทิศตะวันตกเฉียงใต้</p>
+                        </div>
+                        <div class="bg-amber-500/10 text-amber-400 p-3 rounded-full border border-amber-500/20">
+                            <i data-lucide="shield-alert" class="w-6 h-6"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <!-- Basin Comparison Chart -->
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                        <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                            <i data-lucide="bar-chart-3" class="w-4 h-4 text-emerald-400"></i> สัดส่วนระดับน้ำแยกตามลุ่มน้ำหลัก (%)
+                        </h3>
+                        <div class="h-[280px]">
+                            <canvas id="basinComparisonChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Flow and Capacity Scatter/Bar Chart -->
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                        <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                            <i data-lucide="git-branch" class="w-4 h-4 text-indigo-400"></i> ปริมาณน้ำไหลระบายสูงสุด 5 สถานีวิกฤต (ลบ.ม./วิ)
+                        </h3>
+                        <div class="h-[280px]">
+                            <canvas id="topDischargeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content 3: GISTDA API integration guide -->
+            <div id="developer-tab" class="tab-content hidden space-y-4">
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+                    <div class="flex items-center gap-3 border-b border-slate-800 pb-4 mb-4">
+                        <div class="bg-indigo-600 text-white p-2.5 rounded-lg shadow-lg">
+                            <i data-lucide="code-2" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-base font-bold text-white">คู่มือการเชื่อมต่อ GISTDA Sphere & Disaster APIs</h2>
+                            <p class="text-xs text-slate-400">สถาปัตยกรรมระดับองค์กรสำหรับการดึงค่าพยากรณ์น้ำท่วมและข้อมูลดาวเทียม</p>
+                        </div>
+                    </div>
+
+                    <p class="text-sm text-slate-300 leading-relaxed mb-4">
+                        แอปพลิเคชันนี้ออกแบบมาตามโครงสร้าง Schema ของระบบภูมิสารสนเทศอุทกวิทยาของไทย คุณสามารถขอคีย์ใช้งานจริงจาก GISTDA เพื่อเปลี่ยนจากข้อมูลจำลอง ไปดึงข้อมูลสดผ่าน REST API ได้ โดยศึกษาจากคำแนะนำด้านล่างนี้:
+                    </p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
+                        <div class="bg-slate-950 p-4 border border-slate-800 rounded-lg">
+                            <h3 class="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> 1. การสมัครรับสิทธิ์ API Key
+                            </h3>
+                            <ul class="text-xs text-slate-300 space-y-2 list-disc pl-4">
+                                <li>เข้าสู่เว็บไซต์ <a href="https://sphere.gistda.or.th/" target="_blank" class="text-blue-400 underline">GISTDA Sphere Platform</a></li>
+                                <li>ลงทะเบียนสมัครสมาชิกและสร้างแอพพลิเคชันในระบบนักพัฒนา เพื่อรับรหัส <code class="bg-slate-900 px-1 py-0.5 rounded text-indigo-300">API_KEY</code></li>
+                                <li>หรือติดต่อกองพัฒนานวัตกรรมอุตสาหกรรมอวกาศ GISTDA ทางอีเมล <code class="bg-slate-900 px-1 py-0.5 rounded text-indigo-300">innotech@gistda.or.th</code> เพื่อขอสิทธิ์ API ระบบรายงานน้ำท่วมภัยพิบัติ (Floodcheck Platform)</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-slate-950 p-4 border border-slate-800 rounded-lg">
+                            <h3 class="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> 2. ตัวอย่างคำขอ API (Endpoints)
+                            </h3>
+                            <div class="space-y-3 text-xs">
+                                <div>
+                                    <span class="text-slate-400 block font-semibold">API ค้นหาพื้นที่น้ำท่วมย้อนหลังรายสัปดาห์:</span>
+                                    <code class="block bg-slate-900 p-1.5 rounded text-slate-300 overflow-x-auto whitespace-pre font-mono mt-1 text-[11px]">GET https://api.sphere.gistda.or.th/services/info/disaster-flood?key=YOUR_API_KEY</code>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400 block font-semibold">ข้อมูลพื้นที่น้ำท่วมซ้ำซาก (Flood Recurrence) ด้วยละติจูด/ลองจิจูด:</span>
+                                    <code class="block bg-slate-900 p-1.5 rounded text-slate-300 overflow-x-auto whitespace-pre font-mono mt-1 text-[11px]">GET https://api.sphere.gistda.or.th/services/info/disasters/flood-recurrence?key=YOUR_API_KEY&lat=14.36&lon=100.58</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Demo Codeblock (JSON Response structure) -->
+                    <div class="mt-4">
+                        <span class="text-xs font-semibold text-slate-400 block mb-1.5">โครงสร้างการตอบรับข้อมูล JSON มาตรฐาน (GISTDA Response Schema):</span>
+                        <pre class="bg-slate-950 p-3.5 border border-slate-850 rounded-lg text-xs font-mono text-slate-300 overflow-x-auto max-h-[220px]">
+{
+  "status": "success",
+  "meta": {
+    "agency": "GISTDA",
+    "updated_at": "2026-06-12T14:30:00Z"
+  },
+  "data": {
+    "stations": [
+      {
+        "id": "GT-CH-02",
+        "station_name_th": "สถานีลุ่มแม่น้ำเจ้าพระยา (C.2 นครสวรรค์)",
+        "coordinates": { "lat": 15.7011, "lng": 100.1345 },
+        "measurements": {
+          "water_level_msl": 18.45,
+          "bank_capacity_msl": 26.20,
+          "discharge_rate_cms": 1250,
+          "severity_index": 0.704
+        }
+      }
+    ]
+  }
+}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- FOOTER Section -->
+    <footer class="border-t border-slate-900 bg-slate-950 px-4 py-6 mt-6">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+            <div class="flex items-center gap-2">
+                <i data-lucide="waves" class="w-4 h-4 text-blue-500"></i>
+                <span>© 2026 แพลตฟอร์มวิเคราะห์ระดับน้ำประเทศไทย. ข้อมูลจำลองอ้างอิงโครงสร้างภูมิสารสนเทศ GISTDA.</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <a href="https://disaster.gistda.or.th/" target="_blank" class="hover:text-slate-300 underline">Disaster Platform</a>
+                <a href="https://opendata.gistda.or.th/" target="_blank" class="hover:text-slate-300 underline">GISTDA Open Data Portal</a>
+                <span>เวอร์ชัน 2.4.0-Beta</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- GISTDA API Settings Modal (Pop up) -->
+    <div id="apiSettingsModal" class="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[9999] hidden backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 shadow-2xl relative">
+            <button onclick="toggleApiSettingsModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <div class="flex items-center gap-2 mb-4">
+                <i data-lucide="key-round" class="text-blue-500 w-5 h-5"></i>
+                <h3 class="text-base font-bold text-white">ตั้งค่าการเชื่อมต่อ API Key</h3>
+            </div>
+            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+                ป้อนรหัส API Key ของ GISTDA Sphere ของคุณที่นี่ ระบบจะใช้คีย์นี้ในการพยายามเรียกข้อมูลผ่านเซิร์ฟเวอร์จริง หรือจำลองความสมบูรณ์ในการทำธุรกรรม HTTP
+            </p>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">GISTDA Sphere API Key</label>
+                    <input id="userApiKeyInput" type="password" placeholder="เช่น gsp_api_xxxxxxxxx" class="w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-100 font-mono">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">เซิร์ฟเวอร์ปลายทาง (Endpoint URL)</label>
+                    <input id="customEndpoint" type="text" value="https://api.sphere.gistda.or.th/services/info" disabled class="w-full bg-slate-950/50 border border-slate-800/80 rounded-lg py-2 px-3 text-sm text-slate-500 font-mono">
+                </div>
+                <div class="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 rounded p-3 text-[11px] text-yellow-400 leading-snug">
+                    <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+                    <span>หมายเหตุ: การเรียก API ตรงจากเว็บเบราว์เซอร์อาจติด CORS Policy ของ GISTDA แนะนำให้ใช้รหัสนี้ผ่าน Proxy หรือการทดสอบภายในระบบ</span>
+                </div>
+                <div class="flex items-center gap-2 pt-2">
+                    <button onclick="saveApiKeySettings()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-xs transition duration-150">
+                        บันทึกการเชื่อมโยง
+                    </button>
+                    <button onclick="toggleApiSettingsModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2 px-4 rounded-lg text-xs transition duration-150">
+                        ยกเลิก
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Alerts Notification (Toast Element inside UI) -->
+    <div id="liveToastAlert" class="fixed bottom-6 right-6 z-[10000] bg-slate-900 border-l-4 border-rose-500 text-slate-100 p-4 rounded-r-lg shadow-2xl max-w-sm flex items-start gap-3 transition-all duration-300 translate-y-12 opacity-0 pointer-events-none">
+        <div class="bg-rose-500/10 text-rose-400 p-1 rounded">
+            <i data-lucide="shield-alert" class="w-5 h-5 animate-pulse"></i>
+        </div>
+        <div class="flex-1">
+            <h4 class="font-bold text-xs text-rose-400 flex items-center justify-between">
+                <span>เตือนภัยระดับน้ำวิกฤต!</span>
+                <span class="text-[9px] text-slate-500" id="toastTime">เมื่อสักครู่</span>
+            </h4>
+            <p class="text-xs mt-1 text-slate-300" id="toastMessage">สถานีวิกฤตระดับน้ำสูงล้นตลิ่ง เตรียมรับมืออุทกภัยฉับพลัน</p>
+        </div>
+        <button onclick="hideToastAlert()" class="text-slate-400 hover:text-white">
+            <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+    </div>
+
+    <!-- Real-time Hydrology Simulation Script -->
+    <script>
+        // ----------------------------------------------------------------------------------
+        // STATIONS DATA SOURCE (Realistic geography, basins & hydrological thresholds in Thailand)
+        // ----------------------------------------------------------------------------------
+        let stations = [
+            { id: "GT-CH-01", name: "สถานี C.2 (แม่น้ำเจ้าพระยา นครสวรรค์)", code: "C.2", basin: "ChaoPhraya", province: "นครสวรรค์", lat: 15.7011, lng: 100.1345, bankHeight: 26.20, waterLevel: 18.45, discharge: 1250 },
+            { id: "GT-CH-02", name: "สถานี C.3 (แม่น้ำเจ้าพระยา สิงห์บุรี)", code: "C.3", basin: "ChaoPhraya", province: "สิงห์บุรี", lat: 14.8964, lng: 100.4021, bankHeight: 14.50, waterLevel: 11.20, discharge: 1540 },
+            { id: "GT-CH-03", name: "สถานี C.7A (สะพานปรีดี-ธำรง อยุธยา)", code: "C.7A", basin: "ChaoPhraya", province: "พระนครศรีอยุธยา", lat: 14.3541, lng: 100.5815, bankHeight: 9.80, waterLevel: 9.45, discharge: 1860 },
+            { id: "GT-CH-04", name: "สถานี C.29A (แม่น้ำเจ้าพระยา บางไทร)", code: "C.29A", basin: "ChaoPhraya", province: "พระนครศรีอยุธยา", lat: 14.1872, lng: 100.5131, bankHeight: 5.40, waterLevel: 5.25, discharge: 2450 },
+            
+            { id: "GT-PW-01", name: "สถานี P.1 (แม่น้ำปิง อ.เมือง เชียงใหม่)", code: "P.1", basin: "PingWangYomNan", province: "เชียงใหม่", lat: 18.7909, lng: 99.0033, bankHeight: 3.70, waterLevel: 2.10, discharge: 180 },
+            { id: "GT-PW-02", name: "สถานี W.1C (แม่น้ำวัง อ.สามเงา ตาก)", code: "W.1C", basin: "PingWangYomNan", province: "ตาก", lat: 17.2415, lng: 99.0232, bankHeight: 8.50, waterLevel: 4.30, discharge: 95 },
+            { id: "GT-PW-03", name: "สถานี Y.17 (แม่น้ำยม อ.สามง่าม พิจิตร)", code: "Y.17", basin: "PingWangYomNan", province: "พิจิตร", lat: 16.5122, lng: 100.2015, bankHeight: 10.10, waterLevel: 9.95, discharge: 420 },
+            { id: "GT-PW-04", name: "สถานี N.67 (แม่น้ำน่าน อ.ชุมแสง นครสวรรค์)", code: "N.67", basin: "PingWangYomNan", province: "นครสวรรค์", lat: 15.8821, lng: 100.2934, bankHeight: 12.80, waterLevel: 10.40, discharge: 680 },
+            
+            { id: "GT-CM-01", name: "สถานี M.7 (แม่น้ำมูล สะพานเสรีประชาธิปไตย)", code: "M.7", basin: "ChiMun", province: "อุบลราชธานี", lat: 15.2212, lng: 104.8541, bankHeight: 112.00, waterLevel: 111.40, discharge: 2100 },
+            { id: "GT-CM-02", name: "สถานี E.21 (แม่น้ำชี อ.โกสุมพิสัย มหาสารคาม)", code: "E.21", basin: "ChiMun", province: "มหาสารคาม", lat: 16.1511, lng: 103.0721, bankHeight: 148.20, waterLevel: 140.10, discharge: 850 },
+            { id: "GT-CM-03", name: "สถานี M.119 (แม่น้ำมูล อ.พิมาย นครราชสีมา)", code: "M.119", basin: "ChiMun", province: "นครราชสีมา", lat: 15.2221, lng: 102.4932, bankHeight: 152.00, waterLevel: 151.85, discharge: 620 },
+            
+            { id: "GT-MK-01", name: "สถานี Kh.1 (แม่น้ำโขง อ.เชียงแสน เชียงราย)", code: "Kh.1", basin: "Mekong", province: "เชียงราย", lat: 20.2731, lng: 100.0815, bankHeight: 15.00, waterLevel: 7.20, discharge: 3200 },
+            { id: "GT-MK-02", name: "สถานี Kh.2 (แม่น้ำโขง อ.เมือง หนองคาย)", code: "Kh.2", basin: "Mekong", province: "หนองคาย", lat: 17.8841, lng: 102.7422, bankHeight: 12.20, waterLevel: 8.45, discharge: 4500 },
+            
+            { id: "GT-ST-01", name: "สถานี X.271 (แม่น้ำตาปี อ.พุนพิน สุราษฎร์ธานี)", code: "X.271", basin: "Southern", province: "สุราษฎร์ธานี", lat: 9.1121, lng: 99.2312, bankHeight: 7.30, waterLevel: 4.80, discharge: 340 },
+            { id: "GT-ST-02", name: "สถานี X.244 (แม่น้ำโก-ลก อ.สุไหงโก-ลก นราธิวาส)", code: "X.244", basin: "Southern", province: "นราธิวาส", lat: 6.0315, lng: 101.9721, bankHeight: 9.00, waterLevel: 9.50, discharge: 510 }
+        ];
+
+        // Global Application State
+        let selectedStation = null;
+        let map = null;
+        let markersGroup = null;
+        let mainBasinChart = null;
+        let topDischargeChartObj = null;
+        let miniTrendChartObj = null;
+        let activeTab = 'map-tab';
+        let customUserApiKey = '';
+
+        // Initialize Application on Window Load
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initCurrentTime();
+            initLeafletMap();
+            populateStationsOnMap();
+            updateWarningAlertsPanel();
+            initGlobalCharts();
+            
+            // Periodically fluctuate water levels slightly to simulate Live API activity
+            setInterval(simulateRealtimeFluctuations, 8000);
+        });
+
+        // ----------------------------------------------------------------------------------
+        // TIME & UTILS
+        // ----------------------------------------------------------------------------------
+        function initCurrentTime() {
+            const timeEl = document.getElementById('lastUpdateTime');
+            if (timeEl) {
+                const now = new Date();
+                timeEl.innerText = now.toLocaleString('th-TH', { hour12: false });
+            }
+        }
+
+        // Get safe relative measurement index (proportion of current level compared to bank height)
+        function getWaterRatio(station) {
+            // For stations at sea levels (higher numeric MSL value)
+            if (station.bankHeight > 100) {
+                const base = station.bankHeight - 10;
+                return Math.max(0, Math.min(1.2, (station.waterLevel - base) / (station.bankHeight - base)));
+            }
+            return Math.max(0, Math.min(1.2, station.waterLevel / station.bankHeight));
+        }
+
+        // Return descriptive status based on capacity percentage
+        function getStatusDetails(ratio) {
+            if (ratio >= 0.95) return { text: "วิกฤต (Danger)", color: "bg-rose-500/20 text-rose-400 border border-rose-500/30", colorHex: "#f43f5e", rawColor: "rose" };
+            if (ratio >= 0.85) return { text: "เตือนภัย (Warning)", color: "bg-amber-500/20 text-amber-400 border border-amber-500/30", colorHex: "#f59e0b", rawColor: "amber" };
+            if (ratio >= 0.70) return { text: "เฝ้าระวัง (Monitor)", color: "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30", colorHex: "#eab308", rawColor: "yellow" };
+            return { text: "ปกติ (Normal)", color: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30", colorHex: "#10b981", rawColor: "emerald" };
+        }
+
+        // ----------------------------------------------------------------------------------
+        // LEAFLET MAP & GIS FUNCTIONS
+        // ----------------------------------------------------------------------------------
+        function initLeafletMap() {
+            // Focus map center on Thailand center
+            map = L.map('map', {
+                zoomControl: true,
+                scrollWheelZoom: true
+            }).setView([13.7367, 100.5231], 6);
+
+            // Dark premium tile template matching deep dashboard interface
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(map);
+
+            markersGroup = L.layerGroup().addTo(map);
+        }
+
+        function populateStationsOnMap(filteredStations = stations) {
+            markersGroup.clearLayers();
+
+            filteredStations.forEach(st => {
+                const ratio = getWaterRatio(st);
+                const status = getStatusDetails(ratio);
+                const percentString = (ratio * 100).toFixed(1);
+
+                // Create a customized futuristic CSS-based marker
+                const pulsingClass = ratio >= 0.95 ? 'pulse-danger' : '';
+                const customIconHtml = `
+                    <div class="relative flex items-center justify-center">
+                        <span class="absolute w-7 h-7 rounded-full bg-slate-950 border border-slate-700/60 shadow-lg"></span>
+                        <span class="absolute w-5 h-5 rounded-full ${pulsingClass}" style="background-color: ${status.colorHex}; opacity: 0.8;"></span>
+                        <span class="absolute text-[8px] font-bold text-slate-950 font-mono">${percentString}%</span>
+                    </div>
+                `;
+
+                const markerIcon = L.divIcon({
+                    html: customIconHtml,
+                    className: 'custom-leaflet-marker',
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                });
+
+                const popupContent = `
+                    <div class="text-slate-950 p-1 font-sans" style="min-width: 180px;">
+                        <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider">${st.province} • ลุ่มน้ำ ${getBasinThaiName(st.basin)}</span>
+                        <h4 class="font-bold text-sm text-slate-900 mt-0.5">${st.name}</h4>
+                        <hr class="my-1.5 border-slate-200">
+                        <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
+                            <span class="text-slate-500">ระดับน้ำ:</span>
+                            <span class="font-bold text-right">${st.waterLevel.toFixed(2)} ม.รทก.</span>
+                            <span class="text-slate-500">ปริมาณความจุ:</span>
+                            <span class="font-bold text-right text-indigo-600">${percentString}%</span>
+                            <span class="text-slate-500">อัตราการระบาย:</span>
+                            <span class="font-bold text-right text-emerald-600">${st.discharge} ลบ.ม./วิ</span>
+                        </div>
+                        <button onclick="selectStationFromMap('${st.id}')" class="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 rounded text-[10px] uppercase text-center cursor-pointer">
+                            เรียกดูข้อมูลเชิงลึก
+                        </button>
+                    </div>
+                `;
+
+                const marker = L.marker([st.lat, st.lng], { icon: markerIcon })
+                    .bindPopup(popupContent)
+                    .addTo(markersGroup);
+
+                // Open detail pane when clicking marker
+                marker.on('click', () => {
+                    selectStation(st.id);
+                });
+            });
+        }
+
+        function getBasinThaiName(basinCode) {
+            switch(basinCode) {
+                case 'ChaoPhraya': return 'เจ้าพระยา';
+                case 'ChiMun': return 'ชี-มูล';
+                case 'PingWangYomNan': return 'ปิง-วัง-ยม-น่าน';
+                case 'Mekong': return 'โขง';
+                case 'Southern': return 'ภาคใต้';
+                default: return 'ทั่วไป';
+            }
+        }
+
+        // Callback for map-internal links
+        window.selectStationFromMap = function(stationId) {
+            selectStation(stationId);
+            map.closePopup();
+        };
+
+        // ----------------------------------------------------------------------------------
+        // APP LOGIC & STATION SELECTION
+        // ----------------------------------------------------------------------------------
+        function selectStation(stationId) {
+            const st = stations.find(s => s.id === stationId);
+            if (!st) return;
+
+            selectedStation = st;
+
+            // Hide instruction empty state, show detailed pane
+            document.getElementById('stationDetailEmpty').classList.add('hidden');
+            document.getElementById('stationDetailContent').classList.remove('hidden');
+            document.getElementById('stationDetailContent').classList.add('flex');
+
+            // Fill elements
+            const ratio = getWaterRatio(st);
+            const status = getStatusDetails(ratio);
+
+            document.getElementById('detName').innerText = st.name;
+            document.getElementById('detBasin').innerText = `ลุ่มน้ำ${getBasinThaiName(st.basin)}`;
+            
+            const statusEl = document.getElementById('detStatus');
+            statusEl.innerText = status.text;
+            statusEl.className = `text-xs font-bold px-2.5 py-0.5 rounded ${status.color}`;
+
+            document.getElementById('detCoords').innerText = `${st.lat.toFixed(4)}, ${st.lng.toFixed(4)}`;
+            document.getElementById('detBankHeight').innerText = st.bankHeight.toFixed(2);
+            document.getElementById('detWaterLevel').innerText = st.waterLevel.toFixed(2);
+            document.getElementById('detPercent').innerText = `${(ratio * 100).toFixed(1)}%`;
+            document.getElementById('detDischarge').innerText = st.discharge.toLocaleString();
+
+            // Render mini Trend Chart for the station
+            renderMiniTrendChart(st);
+
+            // Center map on selected station gracefully
+            map.panTo([st.lat, st.lng]);
+        }
+
+        // Filter functionality
+        function applyFilters() {
+            const query = document.getElementById('searchQuery').value.toLowerCase();
+            const basin = document.getElementById('basinFilter').value;
+            const statusType = document.getElementById('statusFilter').value;
+
+            const filtered = stations.filter(st => {
+                const matchQuery = st.name.toLowerCase().includes(query) || st.province.toLowerCase().includes(query) || st.code.toLowerCase().includes(query);
+                const matchBasin = basin === 'ALL' || st.basin === basin;
+                
+                const ratio = getWaterRatio(st);
+                const statusObj = getStatusDetails(ratio);
+                const matchStatus = statusType === 'ALL' || statusObj.rawColor === statusType;
+
+                return matchQuery && matchBasin && matchStatus;
+            });
+
+            populateStationsOnMap(filtered);
+
+            // If selected station is filtered out, clear selection pane
+            if (selectedStation && !filtered.find(s => s.id === selectedStation.id)) {
+                document.getElementById('stationDetailEmpty').classList.remove('hidden');
+                document.getElementById('stationDetailContent').classList.add('hidden');
+                document.getElementById('stationDetailContent').classList.remove('flex');
+            }
+        }
+
+        // ----------------------------------------------------------------------------------
+        // WARNINGS PANEL & DESKTOP NOTIFICATIONS (Simulated Toast alerts)
+        // ----------------------------------------------------------------------------------
+        function updateWarningAlertsPanel() {
+            const alertsList = document.getElementById('alertsList');
+            alertsList.innerHTML = '';
+
+            let dangerCount = 0;
+
+            stations.forEach(st => {
+                const ratio = getWaterRatio(st);
+                if (ratio >= 0.85) { // Warning and Danger levels
+                    const status = getStatusDetails(ratio);
+                    const percent = (ratio * 100).toFixed(1);
+                    const isDanger = ratio >= 0.95;
+
+                    if (isDanger) dangerCount++;
+
+                    const alertCard = document.createElement('div');
+                    alertCard.className = `p-3 rounded-lg border bg-slate-950/40 cursor-pointer hover:bg-slate-900 transition flex items-start gap-2.5 ${isDanger ? 'border-rose-500/40 hover:border-rose-500' : 'border-amber-500/40 hover:border-amber-500'}`;
+                    alertCard.setAttribute('onclick', `selectStation('${st.id}')`);
+
+                    alertCard.innerHTML = `
+                        <div class="mt-0.5 ${isDanger ? 'text-rose-500' : 'text-amber-500'} flex-shrink-0">
+                            <i data-lucide="${isDanger ? 'shield-alert' : 'alert-triangle'}" class="w-4 h-4 ${isDanger ? 'animate-pulse' : ''}"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between gap-1.5">
+                                <span class="text-[9px] uppercase font-bold tracking-wider ${isDanger ? 'text-rose-400' : 'text-amber-400'}">${st.province}</span>
+                                <span class="font-mono text-xs font-bold ${isDanger ? 'text-rose-400' : 'text-amber-400'}">${percent}%</span>
+                            </div>
+                            <h4 class="text-xs font-bold text-slate-200 mt-0.5 truncate">${st.name}</h4>
+                            <p class="text-[10px] text-slate-400 mt-0.5">ระบาย: ${st.discharge} ลบ.ม./วิ • น้ำสูงล้นตลิ่งวิกฤต</p>
+                        </div>
+                    `;
+                    alertsList.appendChild(alertCard);
+                }
+            });
+
+            // Update Header Counts
+            document.getElementById('totalStationsCount').innerText = stations.length;
+            document.getElementById('dangerStationsCount').innerText = dangerCount;
+            
+            lucide.createIcons();
+        }
+
+        // Show toast alert
+        function triggerToastAlert(stationName, percentage) {
+            const toast = document.getElementById('liveToastAlert');
+            document.getElementById('toastMessage').innerText = `${stationName} มีปริมาณน้ำเพิ่มขึ้นเกินวิกฤตที่ ${percentage}% ของตลิ่ง เฝ้าระวังน้ำล้นไหลบ่าท่วมพื้นที่ลุ่มต่ำ!`;
+            document.getElementById('toastTime').innerText = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            
+            toast.classList.remove('translate-y-12', 'opacity-0', 'pointer-events-none');
+            
+            // Hide automatically after 5.5s
+            setTimeout(() => {
+                hideToastAlert();
+            }, 5500);
+        }
+
+        function hideToastAlert() {
+            const toast = document.getElementById('liveToastAlert');
+            toast.classList.add('translate-y-12', 'opacity-0', 'pointer-events-none');
+        }
+
+        // ----------------------------------------------------------------------------------
+        // GRAPHS & CHARTS GENERATION (Chart.js)
+        // ----------------------------------------------------------------------------------
+        function initGlobalCharts() {
+            // Chart 1: Basin Level comparison
+            const ctxBasin = document.getElementById('basinComparisonChart').getContext('2d');
+            
+            // Gather statistics
+            const basinsMap = {};
+            stations.forEach(st => {
+                if (!basinsMap[st.basin]) basinsMap[st.basin] = { sum: 0, count: 0 };
+                basinsMap[st.basin].sum += getWaterRatio(st) * 100;
+                basinsMap[st.basin].count++;
+            });
+
+            const labels = ['เจ้าพระยา', 'ปิง-วัง-ยม-น่าน', 'ชี-มูล', 'โขง', 'ภาคใต้'];
+            const dataValues = [
+                (basinsMap['ChaoPhraya'].sum / basinsMap['ChaoPhraya'].count).toFixed(1),
+                (basinsMap['PingWangYomNan'].sum / basinsMap['PingWangYomNan'].count).toFixed(1),
+                (basinsMap['ChiMun'].sum / basinsMap['ChiMun'].count).toFixed(1),
+                (basinsMap['Mekong'].sum / basinsMap['Mekong'].count).toFixed(1),
+                (basinsMap['Southern'].sum / basinsMap['Southern'].count).toFixed(1)
+            ];
+
+            mainBasinChart = new Chart(ctxBasin, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'อัตราเฉลี่ยระดับน้ำเทียบกับตลิ่ง (%)',
+                        data: dataValues,
+                        backgroundColor: [
+                            'rgba(30, 144, 255, 0.45)',
+                            'rgba(0, 191, 255, 0.45)',
+                            'rgba(245, 158, 11, 0.45)',
+                            'rgba(16, 185, 129, 0.45)',
+                            'rgba(99, 102, 241, 0.45)'
+                        ],
+                        borderColor: [
+                            'rgb(59, 130, 246)',
+                            'rgb(6, 182, 212)',
+                            'rgb(245, 158, 11)',
+                            'rgb(16, 185, 129)',
+                            'rgb(99, 102, 241)'
+                        ],
+                        borderWidth: 1.5,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            max: 100,
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+
+            // Chart 2: Top Discharge Rate
+            const ctxDischarge = document.getElementById('topDischargeChart').getContext('2d');
+            const top5Discharge = [...stations].sort((a,b) => b.discharge - a.discharge).slice(0, 5);
+
+            topDischargeChartObj = new Chart(ctxDischarge, {
+                type: 'bar',
+                data: {
+                    labels: top5Discharge.map(s => s.code),
+                    datasets: [{
+                        label: 'อัตราไหล (ลบ.ม./วิ)',
+                        data: top5Discharge.map(s => s.discharge),
+                        backgroundColor: 'rgba(99, 102, 241, 0.5)',
+                        borderColor: 'rgb(129, 140, 248)',
+                        borderWidth: 1.5,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Render station specific trend (using random generator for historical but logically coherent path)
+        function renderMiniTrendChart(station) {
+            const ctx = document.getElementById('miniTrendChart').getContext('2d');
+            
+            // Generate some logical fluctuation history based on current level
+            const baseLevel = station.waterLevel;
+            const hourlyData = [];
+            const labels = [];
+            const now = new Date();
+
+            for (let i = 8; i >= 0; i--) {
+                const hourTime = new Date(now.getTime() - i * 3 * 60 * 60 * 1000);
+                labels.push(hourTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }));
+                
+                // Add minor random step
+                const drift = (Math.sin(i / 1.5) * 0.15) + (Math.random() * 0.1 - 0.05);
+                hourlyData.push((baseLevel - drift).toFixed(2));
+            }
+
+            if (miniTrendChartObj) {
+                miniTrendChartObj.destroy();
+            }
+
+            miniTrendChartObj = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: hourlyData,
+                        borderColor: '#38bdf8',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#0284c7',
+                        pointRadius: 3,
+                        fill: true,
+                        backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                        tension: 0.35
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                            ticks: { color: '#64748b', font: { size: 9 } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#64748b', font: { size: 8 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Live Real-time Simulation Fluctuation Loops
+        function simulateRealtimeFluctuations() {
+            stations.forEach(st => {
+                const shift = (Math.random() * 0.08 - 0.04); // +/- 4cm
+                st.waterLevel = Math.max(0, st.waterLevel + shift);
+                // Shift discharge proportionally
+                st.discharge = Math.round(st.discharge * (1 + shift * 0.1));
+            });
+
+            // Update UI
+            updateWarningAlertsPanel();
+            initCurrentTime();
+
+            // Refresh currently selected station
+            if (selectedStation) {
+                selectStation(selectedStation.id);
+            }
+
+            // Refresh maps dynamically (but silently without fully reloading Leaflet instance)
+            applyFilters();
+        }
+
+        // Stimulate high-level water surge test
+        function simulateTelemetryTrigger() {
+            if (!selectedStation) return;
+
+            // Instantly increase selected station water level significantly to trigger critical alerts
+            selectedStation.waterLevel = selectedStation.bankHeight * 0.98; // Rise to 98%
+            selectedStation.discharge = Math.round(selectedStation.discharge * 1.55);
+
+            triggerToastAlert(selectedStation.name, 98.0);
+            
+            // Re-render UI Elements
+            selectStation(selectedStation.id);
+            updateWarningAlertsPanel();
+            applyFilters();
+        }
+
+        // ----------------------------------------------------------------------------------
+        // EXPORT DATA
+        // ----------------------------------------------------------------------------------
+        function exportStationData() {
+            if (!selectedStation) return;
+
+            const headers = ["Station_ID", "Station_Name", "Basin", "Province", "Bank_Capacity_MSL", "Current_Water_Level_MSL", "Discharge_Rate_CMS", "Recorded_Time"];
+            const now = new Date().toISOString();
+            const row = [
+                selectedStation.id,
+                `"${selectedStation.name}"`,
+                selectedStation.basin,
+                selectedStation.province,
+                selectedStation.bankHeight,
+                selectedStation.waterLevel.toFixed(2),
+                selectedStation.discharge,
+                now
+            ];
+
+            const csvContent = "data:text/csv;charset=utf-8," 
+                + [headers.join(","), row.join(",")].join("\n");
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `telemetry_station_${selectedStation.id}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ----------------------------------------------------------------------------------
+        // NAVIGATION TABS
+        // ----------------------------------------------------------------------------------
+        function switchTab(tabId) {
+            activeTab = tabId;
+
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.add('hidden');
+            });
+
+            // Show current tab
+            document.getElementById(tabId).classList.remove('hidden');
+
+            // Reset classes of navigation buttons
+            const buttons = ['map-tab-btn', 'analytics-tab-btn', 'developer-tab-btn'];
+            buttons.forEach(btnId => {
+                const btn = document.getElementById(btnId);
+                if (btnId === `${tabId}-btn`) {
+                    btn.className = "px-4 py-2 text-xs md:text-sm font-semibold rounded-lg flex items-center gap-2 transition-all duration-150 bg-blue-600 text-white shadow";
+                } else {
+                    btn.className = "px-4 py-2 text-xs md:text-sm font-semibold rounded-lg flex items-center gap-2 transition-all duration-150 text-slate-400 hover:text-white hover:bg-slate-800";
+                }
+            });
+
+            // Trigger Leaflet map invalidate size to adjust layout sizing issues when toggled
+            if (tabId === 'map-tab' && map) {
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 150);
+            }
+        }
+
+        function openDeveloperGuide() {
+            switchTab('developer-tab');
+        }
+
+        // ----------------------------------------------------------------------------------
+        // API CONFIGURATION MODAL
+        // ----------------------------------------------------------------------------------
+        function toggleApiSettingsModal() {
+            const modal = document.getElementById('apiSettingsModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function saveApiKeySettings() {
+            const apiKeyInput = document.getElementById('userApiKeyInput').value.trim();
+            const badge = document.getElementById('apiStatusBadge');
+
+            if (apiKeyInput) {
+                customUserApiKey = apiKeyInput;
+                badge.className = "text-xs bg-indigo-500/20 text-indigo-400 font-bold px-2 py-0.5 rounded border border-indigo-500/30 flex items-center gap-1";
+                badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping"></span> เชื่อมโยง API Key สำเร็จ`;
+            } else {
+                customUserApiKey = '';
+                badge.className = "text-xs bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded border border-emerald-500/30 flex items-center gap-1";
+                badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> จำลองข้อมูลเสมือน`;
+            }
+
+            toggleApiSettingsModal();
+        }
+    </script>
+</body>
+</html>
